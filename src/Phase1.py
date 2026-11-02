@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 DATA_DIR = "data/raw"
-FILES = ["DEMO_L", "DPQ_L", "SMQ_L", "ALQ_L", "BPQ_L", "HSQ_L"]
+FILES = ["DEMO_L", "DPQ_L", "SMQ_L"]
 
 # ===== خواندن فایل‌ها =====
 raw = {}
@@ -201,3 +201,44 @@ fig.savefig("figures/fig4_age_hist.png", dpi=200)
 plt.close(fig)
 
 print("Saved 4 figures in figures/")
+
+# ======================================================
+# مرحله ۵: مقایسه‌ی بدون وزن و وزن‌دار
+# ======================================================
+w = analytic["WTMEC2YR"]
+print("\n===== WEIGHTS =====")
+print(w.describe().round(1))
+print("Max/min weight ratio:", round(w.max() / w.min(), 1))
+print("Sum of weights (adults represented, millions):", round(w.sum() / 1e6, 1))
+print("Design variables present:", analytic["SDMVSTRA"].nunique(), "strata,",
+      analytic["SDMVPSU"].nunique(), "PSU codes")
+
+def wmean(x, w):
+    return (x * w).sum() / w.sum()
+
+res = []
+res.append(("Mean PHQ-9", analytic["phq9"].mean(), wmean(analytic["phq9"], w)))
+ge10 = (analytic["phq9"] >= 10).astype(float)
+res.append(("Proportion PHQ-9 >= 10", ge10.mean(), wmean(ge10, w)))
+for g in ["never", "former", "current"]:
+    ind = (analytic["smoke"] == g).astype(float)
+    res.append((f"Proportion smoking = {g}", ind.mean(), wmean(ind, w)))
+fem = (analytic["sex"] == "female").astype(float)
+res.append(("Proportion female", fem.mean(), wmean(fem, w)))
+res.append(("Mean age", analytic["RIDAGEYR"].mean(), wmean(analytic["RIDAGEYR"], w)))
+
+cmp_df = pd.DataFrame(res, columns=["quantity", "unweighted", "weighted"])
+cmp_df["difference"] = cmp_df["weighted"] - cmp_df["unweighted"]
+print("\n===== UNWEIGHTED vs WEIGHTED =====")
+print(cmp_df.round(3).to_string(index=False))
+
+print("\n===== MEAN PHQ-9 BY SMOKING: unweighted vs weighted =====")
+gm = []
+for g in ["never", "former", "current"]:
+    d = analytic[analytic["smoke"] == g]
+    gm.append({"smoke": g, "n": len(d), "unweighted_mean": d["phq9"].mean(),
+               "weighted_mean": wmean(d["phq9"], d["WTMEC2YR"])})
+print(pd.DataFrame(gm).round(2).to_string(index=False))
+
+cmp_df.round(3).to_csv("unweighted_vs_weighted.csv", index=False)
+print("\nSaved unweighted_vs_weighted.csv")
